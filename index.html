@@ -19,7 +19,7 @@
   <body>
 
     <div id="msg">
-      teste
+      Mensagens: <br>
     </div>
 
     <main role="main" id="tabs">
@@ -99,7 +99,7 @@
               id="tab-sacar-image"
               src="./images/profile.png"
               alt="Imagem do usuário"
-              />
+            />
             <p>
               <strong>José Carlos</strong> <br>
               <span>josecarlosdasilva@hotmail.com</span>
@@ -144,16 +144,15 @@
                 type="text"
                 id="tab-sacar-form-input-chave"
                 placeholder="Selecione o tipo de chave pix"
-                />
+              />
             </div>
-            <div class="tab-sacar-form-input"
-              id="tab-sacar-form-input-valor-container">
+            <div class="tab-sacar-form-input" id="tab-sacar-form-input-valor-container">
               <span>R$</span>
               <input
                 type="text"
                 id="tab-sacar-form-input-valor"
                 placeholder="0,00"
-                />
+              />
             </div>
             <div>
               <button id="tab-sacar-form-button-sacar">
@@ -185,11 +184,7 @@
       </nav>
     </main>
 
-    <script src="https://www.gstatic.com/firebasejs/7.16.1/firebase-app.js"></script>
-    <script
-      src="https://www.gstatic.com/firebasejs/7.16.1/firebase-messaging.js"></script>
-
-    <script type="module" defer>
+    <script type="module">
       document.querySelectorAll('[data-open-tab]').forEach((button) => {
         button.addEventListener('click', () => {
           const tabName = button.getAttribute('data-open-tab');
@@ -279,6 +274,14 @@
         document.querySelector('#loading-tabs').style.display = 'none';
       }
 
+      // Import the functions you need from the SDKs you need
+      import { initializeApp } from "https://www.gstatic.com/firebasejs/9.15.0/firebase-app.js";
+      import { getMessaging, getToken } from "https://www.gstatic.com/firebasejs/9.15.0/firebase-messaging.js"
+
+      // TODO: Add SDKs for Firebase products that you want to use
+      // https://firebase.google.com/docs/web/setup#available-libraries
+
+      // Your web app's Firebase configuration
       const firebaseConfig = {
         apiKey: "AIzaSyAYyws2NvvXfPqKRBQNoc2SifKCOA0-bQI",
         authDomain: "testeapp-aa6a6.firebaseapp.com",
@@ -288,28 +291,44 @@
         appId: "1:409137549600:web:961e1db70326d33f438745"
       };
 
-      try {
-        firebase.initializeApp(firebaseConfig);
+      const FIREBASE_VAPID_KEY = 'BHD2g9VbMlSCbN0vJBvVvP2DzaL59CYjMBQqvRU2OX9EH81NUpQA3PrrUPHjZrIduGPmBFWDkbA1ZMoEat1osCM';
 
-        const messaging = firebase.messaging();
+      (async () => {
+        try {
+          initializeApp(firebaseConfig);
 
-        messaging
-          .requestPermission()
-          .then(function () {
-            document.querySelector('#msg').innerHTML += '<br/> Notification permission granted.';
-            return messaging.getToken()
-          })
-          .then(function(token) {
-            localStorage.setItem('deviceToken', token);
-            document.querySelector('#msg').innerHTML += '<br/> deviceToken: ' + token;
-          })
-          .catch(function (err) {
-            document.querySelector('#msg').innerHTML += '<br/> error: ' + err
-            console.log("Unable to get permission to notify.", err);
-          });
-      } catch (error) {
-        document.querySelector('#msg').innerHTML += '<br/> error: ' + error
-      }
+          const messaging = getMessaging();
+
+          const getFirebaseToken = async () => {
+            try {
+              const currentToken = await getToken(messaging, { vapidKey: FIREBASE_VAPID_KEY });
+              document.querySelector('#msg').innerHTML += '<br>' + currentToken;
+              if (!currentToken) {
+                console.log("No registration token available. Request permission to generate one.");
+              }
+            } catch (error) {
+              console.log("An error occurred while retrieving token. ", error);
+            }
+          };
+
+          const requestForToken = async () => {
+            try {
+              const permission = await Notification.requestPermission();
+              if (permission === "granted") {
+                await getFirebaseToken();
+              }
+            } catch (error) {
+              console.log("An error occurred while getting user permission. ", error);
+            }
+          };
+
+          await requestForToken();
+        } catch (error) {
+          console.log("An error occurred while initializing firebase. ", error);
+          document.querySelector('#msg').innerHTML += 'Erro ao inicializar firebase: ' + error;
+        }
+      })();
     </script>
+
   </body>
 </html>
