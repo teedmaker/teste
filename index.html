@@ -19,6 +19,7 @@
   <body>
 
     <div id="msg">
+      teste
     </div>
 
     <main role="main" id="tabs">
@@ -290,6 +291,9 @@
       firebase.initializeApp(firebaseConfig);
 
       const messaging = firebase.messaging();
+
+      document.querySelector('#msg').innerHTML += messaging.isSupported() ? 'Supported' : 'Not supported';
+
       messaging
         .requestPermission()
         .then(function () {
