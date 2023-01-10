@@ -293,15 +293,15 @@
       messaging
         .requestPermission()
         .then(function () {
+          document.querySelector('#msg').innerHTML += '<br/> Notification permission granted.';
           return messaging.getToken()
         })
         .then(function(token) {
-          // print the token on the HTML page
           localStorage.setItem('deviceToken', token);
-          document.querySelector('#msg').innerHTML += '<br/>' + token;
+          document.querySelector('#msg').innerHTML += '<br/> deviceToken: ' + token;
         })
         .catch(function (err) {
-          document.querySelector('#msg').innerHTML += '<br/>' + err
+          document.querySelector('#msg').innerHTML += '<br/> error: ' + err
           console.log("Unable to get permission to notify.", err);
         });
     </script>
