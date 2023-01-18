@@ -1,6 +1,7 @@
 import { computed, reactive } from "vue";
 import { validateChave } from '@/helpers/mecanismos-de-saque.js'
 import { mecanismosDeSaque } from '@/helpers/mecanismos-de-saque.js'
+import api from '@/helpers/api';
 
 const useSaldo = (user) => {
   const saldo = reactive({
@@ -13,7 +14,16 @@ const useSaldo = (user) => {
     mecanismosDeSaque: mecanismosDeSaque,
     mecanismoDeSaqueSelecionado: mecanismosDeSaque.value.cpfCnpj.key,
     naoPodeSacar: computed(() => {
-      return saldo.valor <= 0 || saldo.isLoading || saldo.erroNoSaque || saldo.saqueEfetuado;
+      if (saldo.valor <= 0) {
+        return true;
+      }
+      if (saldo.isLoading) {
+        return true;
+      }
+      if (saldo.erroNoSaque) {
+        return true;
+      }
+      return saldo.saqueEfetuado;
     }),
     formatado: computed(() => {
       return saldo.valor.toLocaleString('pt-BR', {
@@ -36,27 +46,37 @@ const useSaldo = (user) => {
       }, 2000);
     },
     sacar: async () => {
-      if (saldo.naoPodeSacar) {
-        return saldo.setErroNoSaque('Não é possível sacar no momento.');
-      }
       try {
+        saldo.isLoading = true;
         validateChave(saldo.mecanismoDeSaqueSelecionado, saldo.chaveParaSacar);
+        if (saldo.valorASacar > saldo.valor) {
+          throw new Error('Saldo insuficiente.');
+        }
+        if (saldo.valorASacar <= 0) {
+          throw new Error('Valor inválido.');
+        }
+        await api.post('', {
+          action: 'cliente.saque',
+          valor: saldo.valorASacar,
+        }, {
+          headers: {
+            'Content-Type': 'application/json',
+            'Authorization': 'Bearer ' + localStorage.getItem('token')
+          }
+        }).then(async ({ data }) => {
+          await new Promise((resolve) => setTimeout(resolve, 2000));
+          saldo.valor = data.saldo;
+          saldo.isLoading = false;
+          user.value.saldo = saldo.valor;
+          saldo.setSaqueEfetuado();
+        }).catch((e) => {
+          throw new Error(e.response.data.message);
+        });
       } catch (e) {
-        return saldo.setErroNoSaque(e.message);
+        console.log(e)
+        saldo.isLoading = false;
+        saldo.setErroNoSaque(e.message);
       }
-      if (saldo.valorASacar > saldo.valor) {
-        return saldo.setErroNoSaque('Saldo insuficiente.');
-      }
-      if (saldo.valorASacar <= 0) {
-        return saldo.setErroNoSaque('Valor inválido.');
-      }
-      saldo.isLoading = true;
-      await new Promise((resolve) => setTimeout(resolve, 2000));
-      saldo.valor -= saldo.valorASacar;
-      saldo.isLoading = false;
-      user.value.saldo = saldo.valor;
-      localStorage.setItem('profile', JSON.stringify(user.value));
-      saldo.setSaqueEfetuado();
     }
   });
   return saldo;

@@ -1,17 +1,18 @@
 <script setup>
 import Image from '@/components/Helpers/Image.vue'
 import store from '@/store/index.js'
-import { computed, onMounted, reactive, ref } from 'vue';
+import { computed, onMounted, onUpdated, reactive, ref, watch } from 'vue';
 import useSaldo from '@/uses/useSaldo.js';
-import { mapActions, mapMutations } from 'vuex';
+import { onBeforeRouteUpdate, useRoute } from 'vue-router';
+import api from '../../helpers/api';
 
-const user = computed(() => store.state.profile.user);
-const saldo = useSaldo(user);
+let user = null;
+let saldo = null;
+let posts = null;
 
-let posts = reactive({
-  loading: false,
-  value: [],
-});
+const isLoading = computed(() => store.state.isLoading);
+
+const route = useRoute();
 
 const loadMore = async () => {
   return new Promise(async (resolve, reject) => {
@@ -19,15 +20,16 @@ const loadMore = async () => {
       return;
     }
     posts.loading = true;
-    await new Promise(resolve => setTimeout(resolve, 2000));
-    const result = [
-      {id: posts.value.length + 1, image: `http://lorempixel.com.br/800/800/?${posts.value.length + 1}`, likes: 1256, user: 'fulanodetal', liked: false, value: 1.00},
-      {id: posts.value.length + 2, image: `http://lorempixel.com.br/800/800/?${posts.value.length + 2}`, likes: 200, user: 'outrapessoa', liked: false, value: 1.50},
-      {id: posts.value.length + 3, image: `http://lorempixel.com.br/800/800/?${posts.value.length + 3}`, likes: 100, user: 'outrapessoa', liked: false, value: 1.50},
-      {id: posts.value.length + 4, image: `http://lorempixel.com.br/800/800/?${posts.value.length + 4}`, likes: 100, user: 'outrapessoa', liked: false, value: 1.50},
-      {id: posts.value.length + 5, image: `http://lorempixel.com.br/800/800/?${posts.value.length + 5}`, likes: 100, user: 'outrapessoa', liked: false, value: 1.50},
-    ]
-    for (let post of result) {
+    const { data } = await api.post('', {
+      action: 'cliente.posts',
+      last_id: posts.value.length > 0 ? posts.value[posts.value.length - 1].id : 0,
+    }, {
+      headers: {
+        'Content-Type': 'application/json',
+        'Authorization': 'Bearer ' + localStorage.getItem('token')
+      }
+    });
+    for (let post of data.posts) {
       const handleLikeUnlike = async () => {
         const postIndex = posts.value.findIndex(p => p.id === post.id);
         if (postIndex < 0 || posts.value[postIndex].loadingLike.value) {
@@ -35,23 +37,38 @@ const loadMore = async () => {
         }
         const postItem = posts.value[postIndex];
         postItem.loadingLike = true;
-        await new Promise(resolve => setTimeout(resolve, 1000));
-        postItem.liked = !postItem.liked;
-        if (postItem.liked) {
-          store.state.profile.user.saldo += postItem.value;
-        } else {
-          store.state.profile.user.saldo -= store.state.profile.user.saldo >= postItem.value ? postItem.value : 0;
-        }
-        saldo.valor = store.state.profile.user.saldo;
-        localStorage.setItem('profile', JSON.stringify(store.state.profile.user));
-        postItem.loadingLike = false;
-        posts.value[postIndex] = postItem;
+
+        await api.post('', {
+          action: 'cliente.posts.like',
+          post_id: postItem.id,
+          liked: postItem.liked? 0: 1,
+          valor: postItem.valor,
+        }, {
+          headers: {
+            'Content-Type': 'application/json',
+            'Authorization': 'Bearer ' + localStorage.getItem('token')
+          }
+        }).then(({ data }) => {
+          postItem.liked = !postItem.liked;
+          if (postItem.liked) {
+            store.state.profile.user.saldo += postItem.valor;
+          } else {
+            store.state.profile.user.saldo -= store.state.profile.user.saldo >= postItem.valor ? postItem.valor : 0;
+          }
+          saldo.valor = store.state.profile.user.saldo;
+          postItem.loadingLike = false;
+          posts.value[postIndex] = postItem;
+        }).catch((error) => {
+        }).finally(() => {
+          postItem.loadingLike = false;
+        });
       };
-      const liked = ref(post.liked);
+      const liked = ref(post.liked || false);
       const loadingLike = ref(false);
       const valorFormatado = computed(() => {
-        return post.value.toLocaleString('pt-BR', { style: 'currency', currency: 'BRL' }).replace('R$', '');
+        return post.valor.toLocaleString('pt-BR', { style: 'currency', currency: 'BRL' }).replace('R$', '');
       });
+      post.valor = parseFloat(post.valor);
       posts.value.push({
         ...post,
         handleLikeUnlike,
@@ -64,101 +81,135 @@ const loadMore = async () => {
   });
 };
 
-loadMore().then().catch();
+let onScrollExecuting = ref(false);
 
-onMounted(() => {
-  window.addEventListener('scroll', () => {
-    const endOfPage = window.innerHeight + window.pageYOffset >= document.body.offsetHeight;
-    if (endOfPage) {
+const onScroll = async () => {
+  const endOfPage = window.innerHeight + window.pageYOffset >= document.body.offsetHeight && !posts.loading && !onScrollExecuting.value;
+  if (endOfPage) {
+    onScrollExecuting.value = true;
+    setTimeout(() => {
+      if (posts.loading) {
+        onScrollExecuting.value = false;
+        return;
+      }
       loadMore().then().catch();
-    }
+      onScrollExecuting.value = false;
+    }, 400);
+  }
+};
+
+const configHome = () => {
+  store.state.isLoading = true;
+
+  window.onscroll = onScroll;
+
+  user = computed(() => store.state.profile.user);
+  saldo = useSaldo(user);
+  posts = reactive({
+    loading: false,
+    value: [],
   });
+
+  loadMore().then().catch();
+
+  store.state.isLoading = false;
+}
+
+onMounted(configHome);
+
+watch(route, () => {
+  configHome();
 });
 </script>
 
 <template>
-  <main
-    id="home"
-    :class="{ 'nao-pode-sacar': saldo.naoPodeSacar }"
-  >
-    <div id="home-sacar">
-      <div id="home-sacar-content">
-        <Image
-          id="home-sacar-image"
-          :src="user.image"
-          alt="Imagem do usuário"
-        />
-        <p id="home-sacar-description">
-          <strong v-text="user.email + ' 123 46 789 123 123 1 23'"></strong> <br>
-          <span><i>R$</i> <em v-text="saldo.formatado"></em></span>
-        </p>
-        <p>
-          <router-link
-            id="home-sacar-button"
-            to="/admin/saque"
-          >
-            <span v-if="saldo.isLoading">
-              <i class="fa fa-spinner fa-spin"></i>
-            </span>
-            <span v-else>Sacar</span>
-          </router-link>
-        </p>
-      </div>
-    </div>
-
-    <div id="home-content">
-      <section id="home-content-alert">
-        <p>Curta novas fotos para ganhar mais dinheiro</p>
-      </section>
-
-      <section id="home-content-posts">
-        <div
-          class="home-content-post"
-          :class="{ 'liked': post.liked }"
-          v-for="post of posts.value"
-          :key="post.id"
-        >
-          <div class="home-content-post-image">
-            <img :src="post.image" alt="Imagem para curtir" />
-          </div>
-          <div class="home-content-post-floating">
-            <button>
-              <i class="fa fa-plus"></i>
-            </button>
-            <span>
-              <strong>R$ </strong>
-              <em v-text="post.valorFormatado"></em>
-            </span>
-          </div>
-          <div class="home-content-post-footer">
-            <div class="home-content-post-footer-left">
-              @<span v-text="post.user"></span>
-            </div>
-            <div class="home-content-post-footer-middle">
-              <button
-                @click="post.handleLikeUnlike()"
-              >
-                <i class="fa fa-spin fa-spinner" v-if="post.loadingLike"></i>
-                <i class="fa fa-heart" v-else></i>
-              </button>
-            </div>
-            <div class="home-content-post-footer-right">
-              <span>
-                <i class="fa fa-heart heart"></i>
+  <div>
+    <main
+      id="home"
+      :class="{ 'nao-pode-sacar': saldo.naoPodeSacar }"
+      v-if="!isLoading && user"
+    >
+      <div id="home-sacar">
+        <div id="home-sacar-content">
+          <Image
+            id="home-sacar-image"
+            :src="user.image"
+            alt="Imagem do usuário"
+          />
+          <p id="home-sacar-description">
+            <strong v-text="user.email + ' 123 46 789 123 123 1 23'"></strong> <br>
+            <span><i>R$</i> <em v-text="saldo.formatado"></em></span>
+          </p>
+          <p>
+            <router-link
+              id="home-sacar-button"
+              to="/admin/saque"
+            >
+              <span v-if="saldo.isLoading">
+                <i class="fa fa-spinner fa-spin"></i>
               </span>
-              <span>
-                <i class="fa fa-comment"></i> <em v-text="post.likes + (post.liked ? 1 : 0)"></em>
-              </span>
-            </div>
-          </div>
+              <span v-else>Sacar</span>
+            </router-link>
+          </p>
         </div>
-      </section>
-
-      <div id="home-content-loading" v-if="posts.loading">
-        <h2>Aguarde um instante...</h2>
       </div>
-    </div>
-  </main>
+
+      <div id="home-content">
+        <section id="home-content-alert">
+          <p>Curta novas fotos para ganhar mais dinheiro</p>
+        </section>
+
+        <section id="home-content-posts">
+          <div
+            class="home-content-post"
+            :class="{ 'liked': post.liked }"
+            v-for="post of posts.value"
+            :key="post.id"
+          >
+            <div class="home-content-post-image">
+              <img :src="post.imagem" alt="Imagem para curtir" />
+            </div>
+            <div class="home-content-post-floating">
+              <button>
+                <i class="fa fa-plus"></i>
+              </button>
+              <span>
+                <strong>R$ </strong>
+                <em v-text="post.valorFormatado"></em>
+              </span>
+            </div>
+            <div class="home-content-post-footer">
+              <div class="home-content-post-footer-left">
+                <span v-if="post.user">
+                  @<span v-text="post.user"></span>
+                </span>
+              </div>
+              <div class="home-content-post-footer-middle">
+                <button
+                  @click="post.handleLikeUnlike()"
+                >
+                  <i class="fa fa-spin fa-spinner" v-if="post.loadingLike"></i>
+                  <i class="fa fa-heart" v-else></i>
+                </button>
+              </div>
+              <div class="home-content-post-footer-right">
+                <span>
+                  <i class="fa fa-heart heart"></i>
+                </span>
+                <span>
+                  <i class="fa fa-comment"></i> <em v-text="post.likes + (post.liked ? 1 : 0)"></em>
+                </span>
+              </div>
+            </div>
+          </div>
+        </section>
+
+        <div id="home-content-loading" v-if="posts.loading">
+          <h2>Aguarde um instante...</h2>
+        </div>
+      </div>
+    </main>
+  </div>
 </template>
 
 <style>

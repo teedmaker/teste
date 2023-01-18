@@ -8,6 +8,8 @@ const user = computed(() => store.state.profile.user);
 const saldo = useSaldo(user);
 
 onMounted(() => {
+  store.state.isLoading = false;
+
   // saldo.buscarSaldo();
   document.querySelectorAll('.sacar-form-input input').forEach(input => {
     input.addEventListener('focus', () => {

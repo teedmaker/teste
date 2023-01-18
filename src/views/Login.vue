@@ -1,28 +1,55 @@
 <script setup>
 import checkEmailIsInvalid from '@/helpers/check-email-is-invalid.js';
-import { reactive } from '@vue/reactivity';
+import { reactive, ref } from '@vue/reactivity';
 import { useRouter } from 'vue-router';
+import api from '@/helpers/api.js';
 
 const router = useRouter();
 
-const handleSubmitLogin = () => {
+const doLogin = async () => {
+  return new Promise((resolve, reject) => {
+    let timeToIgnore = setTimeout(() => {
+      clearTimeout(timeToIgnore);
+      reject('Não foi possível fazer o login');
+    }, 5000);
+
+    const payload = {
+      email: profile.email,
+      password: profile.password,
+      action: 'cliente.login',
+    };
+
+    api.post('', payload).then((response) => {
+      clearTimeout(timeToIgnore);
+      resolve(response.data);
+    }).catch((error) => {
+      clearTimeout(timeToIgnore);
+      reject(error.response.data || 'Não foi possível fazer o login');
+    });
+  });
+}
+
+const handleSubmitLogin = async () => {
   profile.loading = true;
   profile.emailInvalid = checkEmailIsInvalid(profile.email);
   if (profile.emailInvalid) {
+    loginError.value = 'Email inválido'
+    profile.loading = false;
+    setTimeout(() => {
+      loginError.value = null;
+    }, 3000);
     return;
   }
-  localStorage.setItem('token', 'token');
-  localStorage.setItem('profile', JSON.stringify({
-    name: profile.name,
-    email: profile.email,
-    image: profile.image,
-    saldo: 0.00,
-    token: '',
-  }));
-  setTimeout(() => {
+  try {
+    const { profile } = await doLogin();
+    localStorage.setItem('token', profile.token);
     profile.loading = false;
     router.push({ name: 'adminHome' });
-  }, 700);
+
+  } catch (error) {
+    loginError.value = error.message || error;
+    profile.loading = false;
+  }
 }
 
 const handleOnFormSubmit = (event) => {
@@ -30,9 +57,13 @@ const handleOnFormSubmit = (event) => {
   handleSubmitLogin();
 }
 
+const loginError = ref(null);
+
 const profile = reactive({
-  name: 'Jhon Doe',
-  email: 'jhondoe@meusite.com',
+  name: '',
+  email: '',
+  password: '',
+  saldo: 0.00,
   image: '/images/profile.png',
   emailInvalid: false,
   loading: true,
@@ -54,6 +85,13 @@ setTimeout(() => {
           Log in
         </span>
       </div>
+      <div
+        id="login-error"
+        :class="{ 'visible': loginError }"
+      >
+        <i class="fa fa-exclamation-triangle"></i>
+        <span v-text="loginError"></span>
+      </div>
       <div id="login-content-body">
         <h3 id="login-content-body-title">
           Faça seu login e comece a faturar!
@@ -70,6 +108,15 @@ setTimeout(() => {
               placeholder="Email de compra"
               :disabled="profile.loading"
               v-model="profile.email"
+              />
+          </div>
+          <div class="login-content-body-input password">
+            <i class="fa fa-key"></i>
+            <input
+              type="password"
+              placeholder="Senha"
+              :disabled="profile.loading"
+              v-model="profile.password"
               />
           </div>
         </form>
@@ -143,7 +190,7 @@ setTimeout(() => {
   text-align: center;
 }
 
-.login-content-body-input.email {
+.login-content-body-input {
   border-bottom: 1px solid #ccc;
   width: 80%;
   margin: auto;
@@ -156,7 +203,7 @@ setTimeout(() => {
   justify-content: center;
 }
 
-.login-content-body-input.email input {
+.login-content-body-input input {
   width: 100%;
   height: 100%;
   padding: 0 20px;
@@ -224,5 +271,30 @@ setTimeout(() => {
   text-align: center;
   font-weight: 100;
   font-size: 15px;
+}
+
+#login-error {
+  position: fixed;
+  top: -100px;
+  left: 0;
+  right: 0;
+  width: 90vw;
+  max-width: 400px;
+  margin: 0 auto;
+  padding: 20px;
+  border-radius: 10px;
+  box-shadow: 0 0 10px 20px rgba(0,0,0,0.07);
+  z-index: 9999;
+  background: rgb(245, 65, 65);
+  color: rgba(255, 255, 255, 0.9);
+  transition: top 0.3s ease-in-out;
+}
+
+#login-error i {
+  margin-right: 10px;
+}
+
+#login-error.visible {
+  top: 40px;
 }
 </style>

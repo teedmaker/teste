@@ -44,6 +44,7 @@ import Image from '../components/Helpers/Image.vue'
 }
 
 #welcome-header img {
+  width: 300px;
   margin: auto;
   display: block;
   margin-bottom: 15px;
